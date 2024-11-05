@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
+	"time"
 )
-
 
 // Generator генерирует последовательность чисел 1,2,3 и т.д. и
 // отправляет их в канал ch. При этом после записи в канал для каждого числа
@@ -14,20 +15,47 @@ import (
 // сгенерированных чисел.
 func Generator(ctx context.Context, ch chan<- int64, fn func(int64)) {
 	// 1. Функция Generator
-	// ...
+	n := 1 // Начальное значение N(0) = 1
+    for {
+        select {
+        case ch <- int64(n): // Отправляем текущее значение n в канал
+            fn(int64(n)) 
+
+			//Обьявляем структуру status для atomic
+			type Stats struct {
+				inputSum  int64
+				inputCount int64
+			}
+			var stats Stats
+
+			
+			atomic.AddInt64(&stats.inputSum, int64(n))
+            atomic.AddInt64(&stats.inputCount, 1)  
+
+			n++ // Увеличиваем n на 1 для следующей итерации
+        case <-ctx.Done(): // Проверяем, не истек ли контекст
+            close(ch) // Закрываем канал перед выходом
+            return
+        }
+    }
 }
 
 // Worker читает число из канала in и пишет его в канал out.
 func Worker(in <-chan int64, out chan<- int64) {
 	// 2. Функция Worker
-	// ...
+	for v := range in {
+		out <- v
+		time.Sleep(1*time.Millisecond)
+	}
+	close(out)
 }
 
 func main() {
 	chIn := make(chan int64)
 
 	// 3. Создание контекста
-	// ...
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
 
 	// для проверки будем считать количество и сумму отправленных чисел
 	var inputSum int64   // сумма сгенерированных чисел
@@ -56,7 +84,16 @@ func main() {
 	var wg sync.WaitGroup
 
 	// 4. Собираем числа из каналов outs
-	// ...
+	for i, in := range outs {
+		wg.Add(1)
+		go func(in <-chan int64, i int64){
+			defer wg.Done()
+			for v := range in {
+				amounts[i]++
+				chOut <- v
+			}
+		}(in, int64(i))
+	}
 
 	go func() {
 		// ждём завершения работы всех горутин для outs
@@ -69,7 +106,10 @@ func main() {
 	var sum int64   // сумма чисел результирующего канала
 
 	// 5. Читаем числа из результирующего канала
-	// ...
+	for i := range chOut {
+		count++
+		sum += i
+	}
 
 	fmt.Println("Количество чисел", inputCount, count)
 	fmt.Println("Сумма чисел", inputSum, sum)
