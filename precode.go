@@ -15,39 +15,39 @@ import (
 // сгенерированных чисел.
 func Generator(ctx context.Context, ch chan<- int64, fn func(int64)) {
 	// 1. Функция Generator
-	n := 1 // Начальное значение N(0) = 1
-    for {
-        select {
-        case ch <- int64(n): // Отправляем текущее значение n в канал
-            fn(int64(n)) 
+	defer close(ch)
 
-			//Обьявляем структуру status для atomic
-			type Stats struct {
-				inputSum  int64
-				inputCount int64
-			}
-			var stats Stats
+	type Stats struct {
+		inputSum   int64
+		inputCount int64
+	}
+	var stats Stats
 
-			
+	n := 1 
+
+	for {
+		select {
+		case ch <- int64(n): // Отправляем текущее значение n в канал
+			fn(int64(n))
+
 			atomic.AddInt64(&stats.inputSum, int64(n))
-            atomic.AddInt64(&stats.inputCount, 1)  
+			atomic.AddInt64(&stats.inputCount, 1)
 
 			n++ // Увеличиваем n на 1 для следующей итерации
-        case <-ctx.Done(): // Проверяем, не истек ли контекст
-            close(ch) // Закрываем канал перед выходом
-            return
-        }
-    }
+		case <-ctx.Done(): // Проверяем, не истек ли контекст
+			return
+		}
+	}
 }
 
 // Worker читает число из канала in и пишет его в канал out.
 func Worker(in <-chan int64, out chan<- int64) {
 	// 2. Функция Worker
+	defer close(out)
 	for v := range in {
 		out <- v
-		time.Sleep(1*time.Millisecond)
+		time.Sleep(1 * time.Millisecond)
 	}
-	close(out)
 }
 
 func main() {
@@ -86,7 +86,7 @@ func main() {
 	// 4. Собираем числа из каналов outs
 	for i, in := range outs {
 		wg.Add(1)
-		go func(in <-chan int64, i int64){
+		go func(in <-chan int64, i int64) {
 			defer wg.Done()
 			for v := range in {
 				amounts[i]++
