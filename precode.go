@@ -17,22 +17,12 @@ func Generator(ctx context.Context, ch chan<- int64, fn func(int64)) {
 	// 1. Функция Generator
 	defer close(ch)
 
-	type Stats struct {
-		inputSum   int64
-		inputCount int64
-	}
-	var stats Stats
-
-	n := 1 
+	var n int64 = 1 
 
 	for {
 		select {
-		case ch <- int64(n): // Отправляем текущее значение n в канал
-			fn(int64(n))
-
-			atomic.AddInt64(&stats.inputSum, int64(n))
-			atomic.AddInt64(&stats.inputCount, 1)
-
+		case ch <- n: // Отправляем текущее значение n в канал
+			fn(n)
 			n++ // Увеличиваем n на 1 для следующей итерации
 		case <-ctx.Done(): // Проверяем, не истек ли контекст
 			return
@@ -63,8 +53,8 @@ func main() {
 
 	// генерируем числа, считая параллельно их количество и сумму
 	go Generator(ctx, chIn, func(i int64) {
-		inputSum += i
-		inputCount++
+		atomic.AddInt64(&inputSum, i)
+		atomic.AddInt64(&inputCount, 1)
 	})
 
 	const NumOut = 5 // количество обрабатывающих горутин и каналов
